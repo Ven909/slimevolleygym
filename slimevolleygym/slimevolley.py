@@ -14,10 +14,10 @@ No dependencies apart from Numpy and Gym
 
 import logging
 import math
-import gym
-from gym import spaces
-from gym.utils import seeding
-from gym.envs.registration import register
+import gymnasium as gym
+from gymnasium import spaces
+from gymnasium.utils import seeding
+from gymnasium.envs.registration import register
 import numpy as np
 import cv2 # installed with gym anyways
 from collections import deque
@@ -97,11 +97,12 @@ def setDayColors():
 setNightColors()
 
 # by default, don't load rendering (since we want to use it in headless cloud machines)
-rendering = None
+renderer = None
 def checkRendering():
-  global rendering
-  if rendering is None:
-    from gym.envs.classic_control import rendering as rendering
+  global renderer
+  if renderer is None:
+    from . import rendering as r
+    renderer = r
 
 def setPixelObsMode():
   """
@@ -151,9 +152,9 @@ def make_half_circle(radius=10, res=20, filled=True):
     ang = math.pi-math.pi*i / res
     points.append((math.cos(ang)*radius, math.sin(ang)*radius))
   if filled:
-    return rendering.FilledPolygon(points)
+    return renderer.FilledPolygon(points)
   else:
-    return rendering.PolyLine(points, True)
+    return renderer.PolyLine(points, True)
 
 def _add_attrs(geom, color):
   """ help scale the colors from 0-255 to 0.0-1.0 (pyglet renderer) """
@@ -180,8 +181,8 @@ def rect(canvas, x, y, width, height, color):
       color, thickness=-1, lineType=cv2.LINE_AA)
     return canvas
   else:
-    box = rendering.make_polygon([(0,0), (0,-height), (width, -height), (width,0)])
-    trans = rendering.Transform()
+    box = renderer.make_polygon([(0,0), (0,-height), (width, -height), (width,0)])
+    trans = renderer.Transform()
     trans.set_translation(x, y)
     _add_attrs(box, color)
     box.add_attr(trans)
@@ -195,7 +196,7 @@ def half_circle(canvas, x, y, r, color):
       (round(r), round(r)), 0, 0, -180, color, thickness=-1, lineType=cv2.LINE_AA)
   else:
     geom = make_half_circle(r)
-    trans = rendering.Transform()
+    trans = renderer.Transform()
     trans.set_translation(x, y)
     _add_attrs(geom, color)
     geom.add_attr(trans)
@@ -208,8 +209,8 @@ def circle(canvas, x, y, r, color):
     return cv2.circle(canvas, (round(x), round(WINDOW_HEIGHT-y)), round(r),
       color, thickness=-1, lineType=cv2.LINE_AA)
   else:
-    geom = rendering.make_circle(r, res=40)
-    trans = rendering.Transform()
+    geom = renderer.make_circle(r, res=40)
+    trans = renderer.Transform()
     trans.set_translation(x, y)
     _add_attrs(geom, color)
     geom.add_attr(trans)
@@ -770,7 +771,8 @@ class SlimeVolleyEnv(gym.Env):
     note: although the action space is multi-binary, float vectors
     are fine (refer to setAction() to see how they get interpreted)
     """
-    done = False
+    terminated = False
+    truncated = False
     self.t += 1
 
     if self.otherAction is not None:
@@ -792,10 +794,10 @@ class SlimeVolleyEnv(gym.Env):
     obs = self.getObs()
 
     if self.t >= self.t_limit:
-      done = True
+      truncated = True
 
     if self.game.agent_left.life <= 0 or self.game.agent_right.life <= 0:
-      done = True
+      terminated = True
 
     otherObs = None
     if self.multiagent:
@@ -813,22 +815,25 @@ class SlimeVolleyEnv(gym.Env):
     }
 
     if self.survival_bonus:
-      return obs, reward+0.01, done, info
-    return obs, reward, done, info
+      reward += 0.01
+
+    return obs, reward, terminated, truncated, info
 
   def init_game_state(self):
     self.t = 0
     self.game.reset()
 
-  def reset(self):
+  def reset(self, seed=None, options=None):
+    if seed is not None:
+      self.seed(seed)
     self.init_game_state()
-    return self.getObs()
+    return self.getObs(), {}
 
   def checkViewer(self):
     # for opengl viewer
     if self.viewer is None:
       checkRendering()
-      self.viewer = rendering.SimpleImageViewer(maxwidth=2160) # macbook pro resolution
+      self.viewer = renderer.SimpleImageViewer(maxwidth=2160) # macbook pro resolution
 
   def render(self, mode='human', close=False):
 
@@ -862,7 +867,7 @@ class SlimeVolleyEnv(gym.Env):
     else: # pyglet renderer
       if self.viewer is None:
         checkRendering()
-        self.viewer = rendering.Viewer(WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.viewer = renderer.Viewer(WINDOW_WIDTH, WINDOW_HEIGHT)
 
       self.game.display(self.viewer)
       return self.viewer.render(return_rgb_array = mode=='rgb_array')
