@@ -22,7 +22,7 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module='tensorflow')
 warnings.filterwarnings("ignore", category=UserWarning, module='gym')
 
-import gym
+import gymnasium as gym
 import os
 import numpy as np
 import argparse
@@ -53,23 +53,24 @@ class RandomPolicy:
 def makeBaselinePolicy(_):
   return BaselinePolicy()
 
-def rollout(env, policy0, policy1, render_mode=False):
+def rollout(env, policy0, policy1, render_mode=False, seed=None):
   """ play one agent vs the other in modified gym-style loop. """
-  obs0 = env.reset()
+  obs0, info = env.reset(seed=seed)
   obs1 = obs0 # same observation at the very beginning for the other agent
 
-  done = False
+  terminated = False
+  truncated = False
   total_reward = 0
   #count = 0
 
-  while not done:
+  while not (terminated or truncated):
 
     action0 = policy0.predict(obs0)
     action1 = policy1.predict(obs1)
 
     # uses a 2nd (optional) parameter for step to put in the other action
     # and returns the other observation in the 4th optional "info" param in gym's step()
-    obs0, reward, done, info = env.step(action0, action1)
+    obs0, reward, terminated, truncated, info = env.step(action0, action1)
     obs1 = info['otherObs']
 
     total_reward += reward
@@ -89,8 +90,7 @@ def rollout(env, policy0, policy1, render_mode=False):
 def evaluate_multiagent(env, policy0, policy1, render_mode=False, n_trials=1000, init_seed=721):
   history = []
   for i in range(n_trials):
-    env.seed(seed=init_seed+i)
-    cumulative_score = rollout(env, policy0, policy1, render_mode=render_mode)
+    cumulative_score = rollout(env, policy0, policy1, render_mode=render_mode, seed=init_seed+i)
     print("cumulative score #", i, ":", cumulative_score)
     history.append(cumulative_score)
   return history
@@ -141,7 +141,8 @@ if __name__=="__main__":
     slimevolleygym.setPixelObsMode()
 
   env = gym.make("SlimeVolley-v0")
-  env.seed(args.seed)
+  env = env.unwrapped
+  # env.seed(args.seed)
 
   render_mode = args.render
 
