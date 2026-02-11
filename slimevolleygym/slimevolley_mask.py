@@ -44,13 +44,11 @@ class SlimeVolleyMaskedEnv(SlimeVolleyEnv):
         # Mask Opponent (Always)
         obs[8:12] = 0.0
         
-        # Mask Ball if on opponent side
-        # In the game, x=0 is the net.
-        # We need to know the ball's actual position.
-        # The obs returned is scaled by / 10.0.
-        # But we can access self.game.ball.x directly.
+        # Mask Ball if on opponent side (Left side, x < 0)
+        # The Agent is on the Right side (x > 0).
+        # We want the agent to see the ball only when it crosses the net to the Right.
         
-        if self.game.ball.x > 0: # Ball is on right side (opponent side)
+        if self.game.ball.x < 0: # Ball is on Left side (Opponent side)
             obs[4:8] = 0.0 # Mask ball x, y, vx, vy
             
         return obs
