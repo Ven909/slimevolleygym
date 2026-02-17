@@ -36,7 +36,7 @@ env = VecFrameStack(env, n_stack=4)
 model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=log_dir)
 
 # Train the agent
-steps = 100_000 # Increase for real results
+steps = 2_000_000 # Increase for real results 
 print(f"Training FrameStack (4 frames) Agent for {steps} steps...")
 model.learn(total_timesteps=steps)
 

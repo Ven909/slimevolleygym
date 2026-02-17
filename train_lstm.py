@@ -33,7 +33,7 @@ model = RecurrentPPO("MlpLstmPolicy", env, verbose=1, tensorboard_log=log_dir)
 
 # Train the agent
 # Recurrent models are slower to train.
-steps = 100_000 # Increase this for real training (e.g. 2_000_000)
+steps = 2_000_000 # Increase this for real training (e.g. 2_000_000)
 print(f"Training LSTM Agent for {steps} steps...")
 model.learn(total_timesteps=steps)
 
