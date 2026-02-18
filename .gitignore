@@ -1,0 +1,19 @@
+# Virtual environments
+.venv/
+venv/
+
+# Training logs and model checkpoints
+logs_lstm/
+logs_framestack/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Egg info
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
