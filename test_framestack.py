@@ -1,5 +1,8 @@
 
 import argparse
+import glob as _glob
+import os
+import os as _os
 import gymnasium as gym
 import slimevolleygym
 import slimevolleygym.slimevolley_mask
@@ -29,10 +32,6 @@ STEP_MODELS = {
     "5m":  os.path.join("logs_framestack", "run_20260223_144019", "ppo_framestack_slimevolley"),
     "10m": os.path.join("logs_framestack", "run_20260223_202559", "ppo_framestack_slimevolley"),
 }
-
-import glob as _glob
-import os as _os
-import os
 
 parser = argparse.ArgumentParser(description="Test a trained FrameStack model.")
 parser.add_argument(
