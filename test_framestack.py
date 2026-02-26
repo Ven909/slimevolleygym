@@ -1,4 +1,5 @@
 
+import argparse
 import gymnasium as gym
 import slimevolleygym
 import slimevolleygym.slimevolley_mask
@@ -21,24 +22,29 @@ def make_env():
 env = DummyVecEnv([make_env])
 env = VecFrameStack(env, n_stack=4)
 
-# Load the trained model from the latest run directory.
-# Falls back to the old flat path if no timestamped run exists.
+# Map friendly step labels to the final model saved at the end of each run.
+# Each entry is the path to the final ppo_framestack_slimevolley.zip for that run.
+STEP_MODELS = {
+    "2m":  os.path.join("logs_framestack", "ppo_framestack_slimevolley"),
+    "5m":  os.path.join("logs_framestack", "run_20260223_144019", "ppo_framestack_slimevolley"),
+    "10m": os.path.join("logs_framestack", "run_20260223_202559", "ppo_framestack_slimevolley"),
+}
+
 import glob as _glob
 import os as _os
+import os
 
-def _find_latest_model(log_root, name):
-    # Look for final model inside any run_* subdirectory, newest first
-    candidates = sorted(
-        _glob.glob(_os.path.join(log_root, "run_*", name + ".zip")),
-        reverse=True
-    )
-    if candidates:
-        return candidates[0].replace(".zip", "")  # SB3 .load() doesn't want the extension
-    # Fallback: old flat layout
-    return _os.path.join(log_root, name)
+parser = argparse.ArgumentParser(description="Test a trained FrameStack model.")
+parser.add_argument(
+    "--steps",
+    choices=["2m", "5m", "10m"],
+    default="10m",
+    help="Which training run to load: 2m (2M steps), 5m (5M steps), or 10m (10M steps). Default: 10m",
+)
+args = parser.parse_args()
 
-model_path = _find_latest_model("logs_framestack", "ppo_framestack_slimevolley")
-print(f"Loading model from: {model_path}")
+model_path = STEP_MODELS[args.steps]
+print(f"Loading '{args.steps}' model from: {model_path}")
 try:
     model = PPO.load(model_path, device="cpu")
 except FileNotFoundError:
