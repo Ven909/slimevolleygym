@@ -108,7 +108,7 @@ checkpoint_callback = CheckpointCallback(
 )
 
 # Train the agent
-steps = 5_000_000 # Increased from 2M for deeper training
+steps = 10_000_000 # 10M steps to observe long-term learning behavior
 print(f"Training FrameStack (4 frames) Agent for {steps} steps...")
 model.learn(total_timesteps=steps, callback=checkpoint_callback, reset_num_timesteps=not bool(checkpoints))
 

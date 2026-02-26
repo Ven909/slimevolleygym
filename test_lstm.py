@@ -11,10 +11,24 @@ import numpy as np
 env = gym.make("SlimeVolleyMasked-v0")
 env.action_space.dtype = np.float32
 
-# Load the trained model
-# If you haven't trained yet, this will fail.
-# Train first: python train_lstm.py
-model_path = "logs_lstm/ppo_lstm_slimevolley"
+# Load the trained model from the latest run directory.
+# Falls back to the old flat path if no timestamped run exists.
+import glob as _glob
+import os as _os
+
+def _find_latest_model(log_root, name):
+    # Look for final model inside any run_* subdirectory, newest first
+    candidates = sorted(
+        _glob.glob(_os.path.join(log_root, "run_*", name + ".zip")),
+        reverse=True
+    )
+    if candidates:
+        return candidates[0].replace(".zip", "")  # SB3 .load() doesn't want the extension
+    # Fallback: old flat layout
+    return _os.path.join(log_root, name)
+
+model_path = _find_latest_model("logs_lstm", "ppo_lstm_slimevolley")
+print(f"Loading model from: {model_path}")
 try:
     model = RecurrentPPO.load(model_path)
 except FileNotFoundError:
