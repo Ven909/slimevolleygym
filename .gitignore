@@ -5,6 +5,7 @@ venv/
 # Training logs and model checkpoints
 logs_lstm/
 logs_framestack/
+logs_exploiter/
 
 # Python cache
 __pycache__/
