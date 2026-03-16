@@ -1,0 +1,318 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{csquotes}
+\usepackage{booktabs}
+\usepackage{svg}
+\usepackage{url}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\title{\LARGE \bf
+Exploiting Partial Observability in Slime Volleyball\\
+with Deep Reinforcement Learning\\
+}
+
+\author{Javier Bueno, Sun, and Ven909\\
+Cal Poly,\\
+San Luis Obispo, United States\\
+\{x.medinabueno,floatingbigcat,moxmal63\}@calpoly.edu
+}
+
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+\pagestyle{empty}
+
+
+\begin{abstract}
+Partial observability is a central challenge in competitive multi-agent games, where agents must act on incomplete information about the game state. This project investigates whether a reinforcement learning agent with full visibility can learn to exploit an opponent that operates under a \enquote{fog of war} --- unable to see the ball when it crosses to the opponent's side or to see the opponent at any time. We train three agents in the SlimeVolleyGym environment~\cite{slimevolleygym}: a built-in 120-parameter recurrent baseline (Agent A), a Proximal Policy Optimization (PPO) agent~\cite{schulman2017proximal} trained with frame stacking under partial observations (Agent B), and a PPO \enquote{exploiter} agent with full visibility trained specifically against Agent B (Agent C). Our experiments show that after 10 million training steps, Agent B draws all 200 evaluation games against Agent A but consistently concedes more points than it scores, with an average score margin of $-0.98$ per game. Agent C is designed to probe whether full visibility yields a systematic advantage against Agent B's blind spots. We discuss the challenges of training competitive agents under partial observability and identify directions for future work.
+\end{abstract}
+
+
+\section{Introduction}
+
+Many competitive decision-making problems involve agents that cannot observe the full state of their environment. A soccer player cannot see opponents behind them; a card player cannot see the opponent's hand; a military commander cannot see beyond the hill. In reinforcement learning (RL), this problem is known as a \textit{partially observable} setting, and it substantially complicates the task of learning good policies~\cite{hausknecht2015deep}.
+
+This project studies partial observability in a controlled, lightweight game: Slime Volleyball, a 2D volleyball-style game in which two slime-shaped agents compete across a net. The SlimeVolleyGym environment~\cite{slimevolleygym} provides a fast, minimal simulation that is well suited for RL research. We extend the environment with a custom \enquote{fog of war} wrapper that restricts what one agent can observe, then train agents using PPO~\cite{schulman2017proximal} implemented in Stable-Baselines3~\cite{raffin2021stable}.
+
+The core research question is: \textit{can a fully-sighted agent learn to exploit the specific blind spots of a partially-sighted opponent?} This connects to broader questions in multi-agent RL about how asymmetric information affects the strategy space available to competing agents. Prior work on games such as Go~\cite{silver2016mastering} has shown that deep RL can discover sophisticated strategies; we explore whether similar targeted exploitation is feasible in a simpler, partially observable setting.
+
+Our contributions are:
+\begin{enumerate}
+    \item A custom masked observation environment (\texttt{SlimeVolleyMasked-v0}) that implements a principled fog-of-war for one agent.
+    \item Three trained agents (baseline, frame-stacked PPO, exploiter PPO) with training runs up to 10 million timesteps.
+    \item An evaluation framework that records per-episode statistics (reward, episode length, lives, win/loss/draw outcome) for systematic comparison.
+    \item An analysis of the difficulty of achieving decisive wins under the draw-biased scoring rules of Slime Volleyball.
+\end{enumerate}
+
+The remainder of this report is organized as follows. Section~II describes the problem specification and game rules. Section~III reviews related work. Section~IV presents the implementation. Section~V analyzes the results. Section~VI summarizes findings and identifies future work.
+
+
+\section{Specification}
+
+\subsection{Game Rules}
+
+Slime Volleyball is a 2D physics-based game implemented in SlimeVolleyGym~\cite{slimevolleygym}. Two semicircular agents (\enquote{slimes}) compete on opposite sides of a net. Each agent controls three binary actions simultaneously: move left, move right, and jump. A point is scored when the ball touches the ground on an agent's own side. Each agent starts each game with five lives; losing all five lives ends the game. If neither agent runs out of lives, the episode ends after a fixed number of timesteps (3000 by default), resulting in a draw.
+
+The primary reward signal is $+1$ when the opponent loses a life and $-1$ when the agent loses a life. The total score for an episode equals the number of opponent lives lost minus the number of agent lives lost, and ranges from $-5$ to $+5$.
+
+\subsection{Inputs and Outputs}
+
+The base environment provides each agent with a 12-dimensional observation vector:
+\[
+  \mathbf{o} = [x, y, v_x, v_y,\; b_x, b_y, b_{v_x}, b_{v_y},\; o_x, o_y, o_{v_x}, o_{v_y}]
+\]
+where $(x, y, v_x, v_y)$ are the agent's position and velocity, $(b_x, b_y, b_{v_x}, b_{v_y})$ are the ball's position and velocity, and $(o_x, o_y, o_{v_x}, o_{v_y})$ are the opponent's position and velocity. All observations are from the perspective of the acting agent.
+
+The action space is \texttt{MultiBinary(3)}, so at each of the 3000 timesteps an agent selects a binary vector $\mathbf{a} \in \{0,1\}^3$.
+
+\subsection{Masked Observation Environment}
+
+We define \texttt{SlimeVolleyMasked-v0}, a custom environment that implements a fog of war for one agent (Agent B during training). Two components are masked:
+\begin{itemize}
+    \item \textbf{Opponent always hidden:} indices $8$--$11$ of $\mathbf{o}$ are zeroed out.
+    \item \textbf{Ball hidden on opponent's side:} indices $4$--$7$ are zeroed out when the ball's $x$-coordinate is negative (i.e., on the left agent's side of the net).
+\end{itemize}
+
+This design reflects a realistic asymmetry: an agent cannot see the opponent at all, and can only see the ball once it crosses the net onto their own side.
+
+\subsection{Main Parameters}
+
+Table~\ref{tab:params} summarizes the key environment and training parameters used in this project.
+
+\begin{table}[h]
+\caption{Table 1: Key environment and training parameters.}
+\label{tab:params}
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Observation dimension (full) & 12 \\
+\hline
+Observation dimension (masked) & 12 (8 visible at most) \\
+\hline
+Action space & MultiBinary(3) \\
+\hline
+Lives per agent & 5 \\
+\hline
+Episode length (timesteps) & 3000 (eval), 4000 (training) \\
+\hline
+Game frame rate & 30 fps \\
+\hline
+Frame stack depth & 4 frames \\
+\hline
+Parallel environments & 4 \\
+\hline
+Checkpoint frequency & 50{,}000 steps \\
+\hline
+\hline
+Agent B training steps & 10{,}000{,}000 \\
+\hline
+Agent C training steps & 5{,}000{,}000 \\
+\hline
+LSTM training steps & 5{,}000{,}000 \\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+
+\section{Related Work}
+
+\subsection{SlimeVolleyGym}
+
+SlimeVolleyGym~\cite{slimevolleygym} was created by David Ha as a lightweight environment for RL research. It includes a built-in 120-parameter recurrent neural network opponent trained with evolutionary strategies, which serves as our baseline (Agent A). The environment is intentionally simple: it requires no GPU for the environment simulation, runs at roughly 12,500 timesteps per second on CPU, and has minimal dependencies. This makes it appropriate for rapid prototyping.
+
+\subsection{Proximal Policy Optimization}
+
+PPO~\cite{schulman2017proximal} is a policy gradient algorithm that constrains each policy update to stay close to the previous policy, balancing the speed of learning against the risk of a destructive update. We use the Stable-Baselines3~\cite{raffin2021stable} implementation with its default \texttt{MlpPolicy}, which applies a multi-layer perceptron (MLP) to map observations to action probabilities. PPO has become one of the most widely used RL algorithms for game-playing tasks because of its robustness and ease of use.
+
+\subsection{Recurrent Policies and Partial Observability}
+
+When the observation is incomplete --- as in our masked environment --- an agent may benefit from memory over past observations. Hausknecht and Stone~\cite{hausknecht2015deep} demonstrate that replacing the standard feedforward network with an LSTM significantly improves performance in partially observable Atari games. We explore this approach via the \texttt{RecurrentPPO} algorithm from SB3-Contrib~\cite{sb3contrib}, which adds an LSTM layer after the MLP in the policy network.
+
+\subsection{Frame Stacking}
+
+A simpler way to provide temporal context is frame stacking~\cite{mnih2015human}: the agent receives the last $k$ observations concatenated as a single input. Mnih et al.\ introduced this technique for Atari games to give the agent implicit velocity information from pixel frames. We apply it to the 12-dimensional state vector with $k=4$, yielding a 48-dimensional input that encodes the recent history of positions and velocities.
+
+\subsection{Multi-Agent and Asymmetric Information}
+
+Our exploiter setup is a form of adversarial training in which one agent exploits the weaknesses of another. This idea appears in AlphaGo~\cite{silver2016mastering} through self-play, where agents iteratively train against improved versions of themselves. Our setting differs in that the two agents have \emph{asymmetric} information, introducing a structural advantage that we try to exploit. To our knowledge, this specific setup --- training a full-visibility agent to exploit a partially-sighted opponent in Slime Volleyball --- has not been studied before.
+
+
+\section{Implementation}
+
+\subsection{Three-Agent Hierarchy}
+
+We define three agents with increasing levels of sophistication:
+
+\begin{itemize}
+    \item \textbf{Agent A (Baseline):} The built-in 120-parameter recurrent network provided by SlimeVolleyGym~\cite{slimevolleygym}. It receives full observations and was trained using an evolutionary strategy in 2015. It serves as a fixed reference opponent.
+    \item \textbf{Agent B (FrameStack PPO):} A PPO agent~\cite{schulman2017proximal} trained in the masked environment (\texttt{SlimeVolleyMasked-v0}). It receives the last four masked observations stacked into a 48-dimensional vector, giving it access to recent history despite the restricted observations. Agent B is trained for up to 10 million timesteps.
+    \item \textbf{Agent C (Exploiter PPO):} A PPO agent trained in the standard environment (\texttt{SlimeVolley-v0}) with full visibility. Its opponent during training is a frozen copy of Agent B (10M-step version), which plays with the same masking applied to its observations. Agent C is trained for 5 million timesteps to discover strategies that exploit Agent B's blind spots.
+\end{itemize}
+
+\subsection{Masked Environment}
+
+The \texttt{SlimeVolleyMasked-v0} environment wraps \texttt{SlimeVolleyEnv} and overrides \texttt{getObs()} to zero out the appropriate indices. The masking is applied at the observation level so it integrates cleanly with the Gymnasium~\cite{gymnasium} API and does not require changes to the base environment physics or reward logic.
+
+\subsection{Frame Stacking}
+
+We use the \texttt{VecFrameStack} wrapper from Stable-Baselines3~\cite{raffin2021stable} with $n\_stack = 4$. At each timestep, the 12-dimensional masked observation is appended to a deque of the last three observations, and all four are concatenated to form the 48-dimensional network input. This allows Agent B to estimate velocities and trajectories even though it cannot observe the ball when it is on the opponent's side.
+
+\subsection{Recurrent PPO (LSTM Agent)}
+
+As an alternative approach to temporal memory, we also train an LSTM-based agent using \texttt{RecurrentPPO} from SB3-Contrib~\cite{sb3contrib} with \texttt{MlpLstmPolicy}. This policy uses an MLP to process each observation, then passes the result through an LSTM layer whose hidden state carries information across timesteps. The LSTM agent is trained for 5 million steps on the same masked environment as Agent B. It serves as a comparison point to assess whether an explicit recurrent state outperforms frame stacking.
+
+\subsection{Reward Shaping}
+
+The base reward ($\pm 1$ per life event) is sparse over 3000-timestep episodes. To encourage active play, we add a \texttt{BallOnSidePenalty} wrapper: if the ball remains on the agent's side for more than 90 consecutive timesteps (approximately 3 seconds), a penalty of $-0.002$ is applied at each subsequent step. This penalty is small enough not to outweigh the scoring reward but discourages purely passive strategies.
+
+\subsection{Training Configuration}
+
+Agent B is trained with 4 parallel environments using \texttt{make\_vec\_env}, a checkpoint every 50,000 steps, and a forced CPU device (MLP policies run faster on CPU than GPU for small networks). The training episode length is extended to 4000 timesteps to allow more scoring opportunities. Agent C uses the same configuration but auto-detects GPU availability because its training loop involves loading Agent B at each environment reset.
+
+\subsection{Evaluation Framework}
+
+The \texttt{model\_eval.py} script provides a unified evaluation interface. For each episode it records: total reward, episode length, agent lives remaining, opponent lives remaining, and outcome (win/loss/draw). After all episodes, it computes aggregate statistics including win/loss/draw rates, average reward with standard deviation, average points scored and conceded, score margin, and shutout rate. Results are exported to CSV for further analysis.
+
+The three-way round-robin in \texttt{eval\_exploiter.py} runs Agent C vs.\ Agent B, Agent A vs.\ Agent B, and Agent C vs.\ Agent A, using a consistent random seed across all match-ups. A positive mean score indicates the first-listed agent wins more points on average.
+
+\begin{figure}[thpb]
+    \centering
+    \includesvg[width=0.45\textwidth]{figure/ppo_results}
+    \caption{Figure 1: PPO training reward curves from the original SlimeVolleyGym benchmark~\cite{slimevolleygym}. The $y$-axis shows average reward per episode against the built-in baseline; the $x$-axis shows training timesteps. This figure illustrates the expected learning curve for a PPO agent trained against the baseline from scratch, which reaches a positive average reward after roughly 3 million steps.}
+    \label{fig:ppo_results}
+\end{figure}
+
+Figure~\ref{fig:ppo_results} shows the reference learning curve from the SlimeVolleyGym benchmark~\cite{slimevolleygym} for a standard PPO agent trained against the baseline. Our training scenario differs because Agent B trains in the masked environment and Agent C trains against a frozen copy of Agent B rather than the baseline directly.
+
+
+\section{Analysis}
+
+\subsection{Evaluation Criteria}
+
+We use the following metrics to evaluate each agent:
+
+\begin{itemize}
+    \item \textbf{Win rate:} fraction of games won (all five opponent lives exhausted before agent's).
+    \item \textbf{Score margin:} average of (points scored $-$ points conceded) per game; a positive margin indicates net dominance even in drawn games.
+    \item \textbf{Average reward:} equals the score margin for a single game under our reward function.
+    \item \textbf{Shutout rate:} fraction of games in which the opponent scored zero points.
+\end{itemize}
+
+Win rate is the primary criterion for outright superiority, but because Slime Volleyball episodes end at a time limit resulting in a draw if neither agent exhausts the other's lives, score margin provides finer discrimination between agents that draw all or most games.
+
+\subsection{Agent B vs.\ Agent A: 200-Game Evaluation}
+
+Table~\ref{tab:results} summarizes the 200-game evaluation of the 10M-step Agent B against Agent A (the baseline). Entries reflect Agent B's performance as the right-side agent.
+
+\begin{table}[h]
+\caption{Table 2: Summary statistics for Agent B (FrameStack PPO, 10M steps) vs.\ Agent A (Baseline), over 200 episodes. All episodes lasted exactly 3000 timesteps. A positive score margin would indicate Agent B dominance.}
+\label{tab:results}
+\begin{center}
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Metric} & \textbf{Value} \\
+\hline
+Episodes & 200 \\
+\hline
+Wins & 0 (0.0\%) \\
+\hline
+Losses & 0 (0.0\%) \\
+\hline
+Draws & 200 (100.0\%) \\
+\hline
+Average reward & $-0.98 \pm 1.15$ \\
+\hline
+Median reward & $-1.0$ \\
+\hline
+Min / Max reward & $-4.0$ / $+2.0$ \\
+\hline
+Avg.\ points scored & 0.335 \\
+\hline
+Avg.\ points conceded & 1.315 \\
+\hline
+Score margin & $-0.98$ \\
+\hline
+Avg.\ episode length & 3000 steps \\
+\hline
+Shutout rate & 0.0\% \\
+\hline
+Avg.\ opponent lives remaining & 4.665 \\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+Table~\ref{tab:results} shows that Agent B draws every game against Agent A, but consistently concedes more points than it scores. The average score margin of $-0.98$ means Agent B loses roughly one life more than Agent A per game on average. The opponent retains an average of 4.665 out of 5 lives, indicating that Agent B rarely kills opponent lives. Agent B scored as few as $-4$ and as many as $+2$ in individual games, showing high variance.
+
+\subsection{Interpreting the Draw-Only Outcome}
+
+All 200 episodes end at exactly the 3000-step time limit, resulting in draws. This is a consequence of the game's scoring structure: a game can only end decisively if one agent exhausts all five lives of the other within the time limit. Even a strong agent may rarely achieve five consecutive kills before the episode ends. The draw-only outcome therefore does not mean both agents performed equally --- the score margin of $-0.98$ shows that Agent A is clearly ahead on points.
+
+\subsection{Effect of Training Duration}
+
+We trained Agent B at three durations: 2M, 5M, and 10M steps. While we did not run separate quantitative evaluations at each checkpoint for all 200 games, visual inspection during development showed that the 2M model played very passively, often failing to return the ball, while the 5M and 10M models developed consistent ball-returning behavior. The 10M model was selected for formal evaluation.
+
+\subsection{Agent C: Exploiter Design}
+
+Agent C trains with full visibility against a frozen 10M-step Agent B. The hypothesis is that Agent C can learn to place the ball so that it crosses the net at moments and angles where Agent B, without ball visibility on the opponent's side, cannot anticipate its arrival. Training for 5M steps produced a model (151 KB) that was visually competitive during informal testing. A full three-way round-robin evaluation (Agent C vs.\ B, Agent A vs.\ B, Agent C vs.\ A) was implemented in \texttt{eval\_exploiter.py} but was not run to completion at the time of this report, so quantitative comparison of Agent C against the other agents is deferred to future work.
+
+\subsection{LSTM Agent}
+
+The LSTM agent (RecurrentPPO, 5M steps, 6.9 MB model) was trained on the same masked environment as Agent B. Recurrent models are significantly slower to train per timestep than frame-stacked MLP models, which is why we capped training at 5M steps. Qualitative testing showed that the LSTM agent also learned to return the ball consistently, but a head-to-head comparison with Agent B was not completed due to time constraints.
+
+\subsection{Limitations}
+
+The main limitation of this evaluation is the draw-heavy scoring structure of Slime Volleyball. Even a clear performance gap between agents manifests only as a difference in score margin rather than in win rate, making it hard to demonstrate statistical significance with a modest number of episodes. A second limitation is that the exploiter's potential advantage over Agent B has not yet been quantified through the round-robin evaluation. Third, all training used default PPO hyperparameters; a systematic hyperparameter search could improve performance.
+
+
+\section{Conclusions}
+
+\subsection{Summary}
+
+This project trained three agents --- a baseline recurrent network (Agent A), a frame-stacked PPO agent under partial observability (Agent B), and a full-visibility exploiter PPO agent (Agent C) --- to play Slime Volleyball. We created a custom masked environment that hides opponent information and ball information when the ball is on the opponent's side, implemented reward shaping to encourage active play, and built an evaluation framework that records per-episode statistics.
+
+The 10M-step frame-stacked Agent B draws all 200 games against the baseline but concedes more points than it scores (score margin $-0.98$), indicating that the masking makes it harder to develop a dominant policy. The agent scores in some games (max reward $+2.0$) but concedes more often (min reward $-4.0$), suggesting it learned a partial strategy that can return the ball but does not proactively attack.
+
+\subsection{Comparison with Earlier Stages}
+
+Early in the project (2M steps), Agent B was largely passive and failed to return many shots. The addition of the \texttt{BallOnSidePenalty} wrapper and the extension of the training episode length to 4000 steps were direct responses to this observation and produced more active play at 5M and 10M steps. These changes were motivated by feedback during development.
+
+\subsection{Main Findings}
+
+\begin{itemize}
+    \item Partial observability (masked opponent + ball) substantially degrades Agent B's score margin compared to the reference PPO score of $+1.377$ reported in the SlimeVolleyGym benchmark~\cite{slimevolleygym}, which was achieved with full visibility.
+    \item Frame stacking provides temporal context for an otherwise memoryless MLP policy and is sufficient for the agent to learn consistent ball-returning behavior.
+    \item The draw-heavy game structure means win rate is not a sensitive evaluation metric; score margin is more informative.
+    \item Ten million training steps produced a qualitatively better agent than two million steps, but a decisive quantitative improvement in score margin was not demonstrated.
+\end{itemize}
+
+\subsection{Gaps and Future Work}
+
+Several directions remain open:
+
+\begin{itemize}
+    \item \textbf{Complete round-robin evaluation.} Running the three-way Agent A vs.\ B vs.\ C evaluation would directly test whether the exploiter hypothesis holds.
+    \item \textbf{LSTM vs.\ frame stacking.} A head-to-head comparison of the two temporal-context methods under identical training budgets would clarify which better compensates for partial observability.
+    \item \textbf{Longer training.} The benchmark~\cite{slimevolleygym} shows that PPO typically reaches its best performance around 3M steps against the baseline with full observations. Training Agent B longer in the masked setting may eventually produce a positive score margin.
+    \item \textbf{Self-play.} Training Agent B against itself in the masked environment (both agents masked) could discover strategies adapted to mutual uncertainty.
+    \item \textbf{Hyperparameter tuning.} Systematic tuning of learning rate, clip range, and network size could improve sample efficiency.
+\end{itemize}
+
+
+\bibliographystyle{IEEEtran}
+\bibliography{bibliography}
+
+
+\end{document}
