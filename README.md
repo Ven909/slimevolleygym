@@ -1,270 +1,302 @@
-# Slime Volleyball Gym Environment
+# Exploiting Partial Observability in Slime Volleyball with Deep RL
 
-<p align="left">
-  <img width="100%" src="https://otoro.net/img/slimegym/pixel.gif"></img>
-</p>
+**CSC 480 — Artificial Intelligence**
+**Cal Poly San Luis Obispo — Instructor: Rodrigo Canaan**
 
-Slime Volleyball is a game created in the early 2000s by an unknown author.
+**Team:** Javier Medina Bueno, Michael Man, Venkata G. Ande, Thomas Hagos, Antony Tartakovskiy
 
-*“The physics of the game are a little ‘dodgy,’ but its simple gameplay made it instantly addictive.”*<br/>
 
 ---
 
-**Update (May 12, 2022):** This environment has been ported over to [EvoJAX](https://github.com/google/evojax), hardware-accelerated neuroevolution toolkit that allows SlimeVolley to run on GPUs, enabling training time in minutes rather than hours.
+## Project Overview
+
+This project investigates whether a reinforcement learning agent with full
+visibility can exploit the blind spots of an opponent that operates under a
+"fog of war."  We build on the
+[SlimeVolleyGym](https://github.com/hardmaru/slimevolleygym) environment (by
+David Ha) and train three agents using
+[Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) PPO:
+
+| Agent | Description |
+|---|---|
+| **Agent A** (Baseline) | Built-in 120-parameter recurrent network provided by SlimeVolleyGym |
+| **Agent B** (FrameStack PPO) | PPO trained for 10 M steps under partial observations (masked env) |
+| **Agent C** (Exploiter PPO) | PPO trained for 10 M steps with full visibility against Agent B |
 
 ---
 
-SlimeVolleyGym is a simple gym environment for testing single and multi-agent reinforcement learning algorithms.
+## Credits and External Resources
 
-The game is very simple: the agent's goal is to get the ball to land on the ground of its opponent's side, causing its opponent to lose a life. Each agent starts off with five lives. The episode ends when either agent loses all five lives, or after 3000 timesteps has passed. An agent receives a reward of +1 when its opponent loses or -1 when it loses a life.
+| Resource | Use |
+|---|---|
+| [SlimeVolleyGym](https://github.com/hardmaru/slimevolleygym) by David Ha | Base game environment and built-in baseline agent |
+| [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) | PPO implementation and vectorized environment utilities |
+| [SB3-Contrib](https://github.com/Stable-Baselines-Team/stable-baselines3-contrib) | RecurrentPPO (LSTM policy) |
+| [Gymnasium](https://gymnasium.farama.org) | Environment API |
 
-This environment is based on [Neural Slime Volleyball](https://otoro.net/slimevolley/), a JavaScript game I created in [2015](https://blog.otoro.net/2015/03/28/neural-slime-volleyball/) that used self-play and evolution to train a simple neural network agent to play the game better than most human players. I decided to port it over to Python as a lightweight and fast gym environment as a testbed for more advanced RL methods such as multi-agent, self-play, continual learning, and imitation learning algorithms.
-
-### Note: Regarding Libraries
-
-- The pre-trained PPO models were trained using [stable-baselines](https://github.com/hill-a/stable-baselines) v2.10, *not* [stable-baselines3](https://github.com/DLR-RM/stable-baselines3).
-
-- The examples were developed based on Gym version 0.19.0 or earlier. I tested 0.20.0 briefly and it seems to work, but later versions of Gym have API-breaking changes.
-
-- I used pyglet library 0.15.7 or earlier while developing this, but have not tested whether the package works for the latest versions of pyglet.
-
-### Notable features
-
-- Only dependencies are gym and numpy. No other libraries needed to run the env, making it less likely to break.
-
-- In the normal single agent setting, the agent plays against a tiny 120-parameter [neural network](https://otoro.net/slimevolley/) baseline agent from 2015. This opponent can easily be replaced by another policy to enable a multi-agent or self-play environment.
-
-- Runs at around 12.5K timesteps per second on 2015 MacBook (core i7) for state-space observations, resulting in faster iteration in experiments.
-
-- A [tutorial](TRAINING.md) demonstrating several different training methods (e.g. single agent, self-play, evolution) that require only a single CPU machine in most cases. Potentially useful for educational purposes.
-
-- A pixel observation mode is available. Observations are directly rendered to numpy arrays and runs on headless cloud machines. The pixel version of the environment mimics gym environments based on the Atari Learning Environment and has been tested on several Atari gym wrappers and RL models tuned for Atari.
-
-- The opponent's observation is made available in the optional `info` object returned by `env.step()` for both state and pixel settings. The observations are constructed as if the agent is always playing on the right court, even if it is playing on the left court, so an agent trained to play on one side can play on the other side without adjustment.
-
-This environment is meant to complement existing simple benchmark tasks, such as CartPole, Lunar Lander, Bipedal Walker, Car Racing, and continuous control tasks (MuJoCo / PyBullet / DM Control), but with an extra game-playing element. The motivation is to easily enable trained agents to play against each other, and also let us easily train agents directly in a multi-agent setting, thus adding an extra dimension for evaluating an agent's performance.
+---
 
 ## Installation
 
-Install from pip package, if you only want to use the gym environment, but don't want the example usage scripts:
+### 1. Clone and create a virtual environment
 
-```
-pip install slimevolleygym
-```
-
-Install from the repo, if you want basic usage demos, training scripts, pre-trained models:
-
-```
-git clone https://github.com/hardmaru/slimevolleygym.git
+```bash
+git clone <this-repo-url>
 cd slimevolleygym
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+```
+
+### 2. Install dependencies
+
+```bash
 pip install -e .
+pip install stable-baselines3[extra]
+pip install sb3-contrib
+pip install gymnasium pygame
 ```
 
-## Basic Usage
+> **Python version:** 3.9 or 3.10 recommended (tested on 3.10).
 
-After installing from the repo, you can play the game against the baseline agent by running:
+---
 
-```
+## Usage
+
+```bash
 python test_state.py
 ```
 
-<p align="left">
-  <img width="50%" src="https://otoro.net/img/slimegym/state.gif"></img>
-  <!--<br/><i>State-space observation mode.</i>-->
-</p>
+---
 
-You can control the agent on the right using the arrow keys, or the agent on the left using (A, W, D).
+### Train the agents
 
-Similarly, `test_pixel.py` allows you to play in the pixelated environment, and `test_atari.py` lets you play the game by observing the preprocessed stacked frames (84px x 84px x 4 frames) typically done for Atari RL agents:
+#### Agent B — FrameStack PPO (10 M steps, ~6 hours on CPU)
 
-<p align="left">
-  <img width="50%" src="https://media.giphy.com/media/W3NItV6PINmbgUFKPf/giphy.gif"></img>
-  <br/><i>Atari gym wrappers combine 4 frames as one observation.</i>
-</p>
-
-## Environments
-
-There are two types of environments: state-space observation or pixel observations:
-
-|Environment Id|Observation Space|Action Space
-|---|---|---|
-|SlimeVolley-v0|Box(12)|MultiBinary(3)
-|SlimeVolleyPixel-v0|Box(84, 168, 3)|MultiBinary(3)
-|SlimeVolleyNoFrameskip-v0|Box(84, 168, 3)|Discrete(6)
-
-`SlimeVolleyNoFrameskip-v0` identical to `SlimeVolleyPixel-v0` except that the action space is now a one-hot vector typically used in Atari RL agents.
-
-In state-space observation, the 12-dim vector corresponds to the following states:
-
-<img src="https://render.githubusercontent.com/render/math?math=\left(x_{agent}, y_{agent}, \dot{x}_{agent}, \dot{y}_{agent}, x_{ball}, y_{ball}, \dot{x}_{ball}, \dot{y}_{ball}, x_{opponent}, y_{opponent}, \dot{x}_{opponent}, \dot{y}_{opponent}\right)"></img>
-
-The origin point (0, 0) is located at the bottom of the fence.
-
-Both state and pixel observations are presented assuming the agent is playing on the right side of the screen.
-
-### Using Multi-Agent Environment
-
-It is straight forward to modify the gym loop to enable multi-agent or self-play. Here is a basic gym loop:
-
-```python
-import gym
-import slimevolleygym
-
-env = gym.make("SlimeVolley-v0")
-
-obs = env.reset()
-done = False
-total_reward = 0
-
-while not done:
-  action = my_policy(obs)
-  obs, reward, done, info = env.step(action)
-  total_reward += reward
-  env.render()
-
-print("score:", total_reward)
+```bash
+python train_framestack.py
 ```
 
-The `info` object contains extra information including the observation for the opponent:
+The trained model is saved to `logs_framestack/run_<timestamp>/ppo_framestack_slimevolley.zip`.
 
-```
-info = {
-  'ale.lives': agent's lives left,
-  'ale.otherLives': opponent's lives left,
-  'otherObs': opponent's observations,
-  'state': agent's state (same as obs in state mode),
-  'otherState': opponent's state (same as otherObs in state mode),
-}
-```
+#### Agent C — Exploiter PPO (5 M steps by default)
 
-This modification allows you to evaluate `policy1` against `policy2`
+```bash
+# Default: 5 M steps, 4 parallel envs, auto device
+python train_exploiter.py
 
-```python
-obs1 = env.reset()
-obs2 = obs1 # both sides always see the same initial observation.
+# Custom settings
+python train_exploiter.py \
+    --steps 5000000 \
+    --n-envs 4 \
+    --device cpu \
+    --agent-b logs_framestack/run_20260223_202559/ppo_framestack_slimevolley.zip
 
-done = False
-total_reward = 0
+# Resume from a checkpoint
+python train_exploiter.py --resume-from logs_exploiter/run_<id>/checkpoints/ppo_exploiter_3000000_steps.zip
 
-while not done:
-
-  action1 = policy1(obs1)
-  action2 = policy2(obs2)
-
-  obs1, reward, done, info = env.step(action1, action2) # extra argument
-  obs2 = info['otherObs']
-
-  total_reward += reward
-  env.render()
-
-print("policy1's score:", total_reward)
-print("policy2's score:", -total_reward)
+# Use a preset opponent (2m / 5m / 10m steps of Agent B)
+python train_exploiter.py --opponent 10m
 ```
 
-Note that in both state and pixel modes, `otherObs` is given as if the agent is playing on the right side of the screen, so one can swap an agent to play either side without modifying the agent.
+#### LSTM Agent (5 M steps)
 
-<p align="left">
-  <img width="50%" src="https://media.giphy.com/media/IeA1Nv2WZSOoZJrh6Z/giphy.gif"></img>
-  <br/><i>Opponent's observation is rendered in the smaller window.</i>
-</p>
-
-One can consider replacing `policy2` with earlier versions of your agent (self-play) and wrapping the multi-agent environment as if it were a single-agent environment so that it can use standard RL algorithms. There are several examples of these techniques described in more detail in the [TRAINING.md](TRAINING.md) tutorial.
-
-## Evaluating against other agents
-
-Several pre-trained agents (`ppo`, `cma`, `ga`, `baseline`) are discussed in the [TRAINING.md](TRAINING.md) tutorial.
-
-You can run them against each other using the following command:
-
-```
-python eval_agents.py --left ppo --right cma --render
+```bash
+python train_lstm.py
 ```
 
-<p align="left">
-  <!--<img width="50%" src="https://media.giphy.com/media/VGPfocuIS7YYh6kyMv/giphy.gif"></img>-->
-  <img width="50%" src="https://media.giphy.com/media/WsMaF3xeATeiCv7dBq/giphy.gif"></img>
-  <br/><i>Evaluating PPO agent (left) against CMA-ES (right).</i>
-</p>
+---
 
-It should be relatively straightforward to modify `eval_agents.py` to include your custom agent.
+### Watch a trained agent play
 
-## Leaderboard
+```bash
+# Agent B (FrameStack) vs baseline
+python test_framestack.py
 
-Below are scores achieved by various algorithms and links to their implementations. Feel free to add yours here:
+# Agent C (Exploiter) vs Agent B — change episodes with --episodes
+python test_exploiter.py \
+    --agent-c logs_exploiter/run_20260303_204533/ppo_exploiter_slimevolley.zip \
+    --opponent 10m \
+    --episodes 5
 
-### SlimeVolley-v0
+# LSTM agent
+python test_lstm.py
+```
 
-|Method|Average Score|Episodes|Other Info
-|---|---|---|---|
-|Maximum Possible Score|5.0|  | 
-|PPO | 1.377 ± 1.133 | 1000 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|CMA-ES | 1.148 ± 1.071 | 1000 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|GA (Self-Play) | 0.353 ± 0.728 | 1000 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|CMA-ES (Self-Play) | -0.071 ± 0.827 | 1000 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|PPO (Self-Play) | -0.371 ± 1.085 | 1000 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|Random Policy | -4.866 ± 0.372 | 1000 | 
-|[Add Method](https://github.com/hardmaru/slimevolleygym/edit/master/README.md) |  |  |  
+---
 
-### SlimeVolley-v0 (Sample Efficiency)
+### Evaluate a model (headless, saves CSV)
 
-For sample efficiency, we can measure how many timesteps it took to train an agent that can achieve a positive average score (over 1000 episodes) against the built-in baseline policy:
+```bash
+# Agent B vs baseline, 200 episodes, save to CSV
+python model_eval.py \
+    --model framestack \
+    --path logs_framestack/run_20260223_202559/ppo_framestack_slimevolley.zip \
+    --episodes 200 \
+    --save results.csv
 
-|Method| Timesteps (Best) | Timesteps (Median)| Trials | Other Info
-|---|---|---|---|---|
-|PPO | 1.274M | 2.998M | 17 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|Data-efficient Rainbow | 0.750M | 0.751M | 3 | [link](https://github.com/pfnet/pfrl/blob/master/examples/slimevolley/README.md)
-|[Add Method](https://github.com/hardmaru/slimevolleygym/edit/master/README.md) |  |  |  | 
+# Agent C (exploiter) vs Agent B
+python model_eval.py \
+    --model exploiter \
+    --path logs_exploiter/run_20260303_204533/ppo_exploiter_slimevolley.zip \
+    --opponent 10m \
+    --episodes 200 \
+    --save results_exploiter.csv
 
-### SlimeVolley-v0 (Against Other Agents)
+# LSTM agent vs baseline
+python model_eval.py \
+    --model lstm \
+    --path logs_lstm/ppo_lstm_slimevolley.zip \
+    --episodes 200
 
-Table of average scores achieved versus agents other than the default baseline policy ([1000 episodes](https://github.com/hardmaru/slimevolleygym/blob/master/eval_agents.py)):
+# Baseline RNN against itself
+python model_eval.py --model baseline --episodes 200
+```
 
-|Method|Baseline|PPO|CMA-ES|GA (Self-Play)| Other Info
+---
+
+### Reproduce the round-robin evaluation
+
+This reproduces the three-way match-up in Table 3 of the report
+(200 games per match-up, fixed seed 721):
+
+```bash
+python eval_exploiter.py \
+    --agent-c logs_exploiter/run_20260303_204533/ppo_exploiter_slimevolley.zip \
+    --agent-b logs_framestack/run_20260223_202559/ppo_framestack_slimevolley.zip \
+    --trials 200 \
+    --seed 721 \
+    --output results_roundrobin.csv
+```
+
+Results are written to `results_roundrobin.csv`.  Add `--render` to watch games.
+
+---
+
+### Analyze training curves
+
+```bash
+python analyze_training.py
+```
+
+Reads TensorBoard event files from `logs_framestack/`, `logs_lstm/`, and
+`logs_exploiter/` and outputs `milestone_summary.csv`, `delta_analysis.csv`,
+`learning_curves.png`, `bar_chart_milestones.png`, and `delta_analysis.png`.
+
+---
+
+## Results
+
+### Agent B vs Agent A — 200 episodes (`results.csv`)
+
+| Metric | Value |
+|---|---|
+| Wins / Losses / Draws | 0 / 0 / 200 |
+| Avg reward | −0.98 ± 1.15 |
+| Avg points scored | 0.34 |
+| Avg points conceded | 1.32 |
+| Score margin | −0.98 |
+| Avg episode length | 3000 steps |
+
+All 200 episodes end at the time limit (draws).  Agent B consistently
+concedes more points than it scores; the score margin of −0.98 means Agent B
+loses roughly one life more than Agent A per game on average.
+
+---
+
+### Round-robin evaluation — 200 games per match-up (`results_roundrobin.csv`)
+
+Entries show the mean score ± std for the **right-side (first-listed) agent**.
+A positive mean means the right-side agent wins more points on average.
+
+| Match-up | Mean score | Std | Win% | Loss% | Draw% |
 |---|---|---|---|---|---|
-|PPO |  1.377 ± 1.133 | — |  0.133 ± 0.414 | -3.128 ± 1.509 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|CMA-ES | 1.148 ± 1.071 | -0.133 ± 0.414 | — | -0.301 ± 0.618 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|GA (Self-Play) | 0.353 ± 0.728  | 3.128 ± 1.509 | 0.301 ± 0.618 | — | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|CMA-ES (Self-Play) | -0.071 ± 0.827  |  -0.749 ± 0.846 |  -0.351 ± 0.651 |  -4.923 ± 0.342 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|PPO (Self-Play) | -0.371 ± 1.085  | 0.119 ± 1.46 |  -2.304 ± 1.392 |  -0.42 ± 0.717 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|[Add Method](https://github.com/hardmaru/slimevolleygym/edit/master/README.md) |  |  |
+| C (right) vs B (left) | −0.84 | 1.34 | 12.0 | 57.0 | 31.0 |
+| A (right) vs B (left) | +0.07 | 1.10 | 28.5 | 26.5 | 45.0 |
+| C (right) vs A (left) | −1.95 | 1.58 |  6.5 | 82.5 | 11.0 |
 
-It is interesting to note that while GA (Self-Play) did not perform as well against the baseline policy compared to PPO and CMA-ES, it is a superior policy if evaluated against these methods that trained directly against the baseline policy.
+Agent C failed to exploit Agent B's blind spots: it scores −0.84 against B,
+while Agent A scores +0.07 — a gap of −0.91 in favor of A.
+Agent C also lost heavily to Agent A (−1.95), indicating it overfitted to
+Agent B's style during training.
 
-### SlimeVolleyPixel-v0
+---
 
-Results for pixel observation version of the environment (`SlimeVolleyPixel-v0` or `SlimeVolleyNoFrameskip-v0`):
+### Training milestone rewards (`milestone_summary.csv`)
 
-|Pixel Observation|Average Score|Episodes|Other Info
+Mean training reward at 2 M, 5 M, and 10 M steps (measured against the
+respective training opponent in TensorBoard logs):
+
+| Agent | 2 M steps | 5 M steps | 10 M steps |
 |---|---|---|---|
-|Maximum Possible Score|5.0| | |
-|PPO | 0.435 ± 0.961 | 1000 | [link](https://github.com/hardmaru/slimevolleygym/blob/master/TRAINING.md)
-|Rainbow | 0.037 ± 0.994 | 1000 | [link](https://github.com/hardmaru/RainbowSlimeVolley)
-|A2C | -0.079 ± 1.091 | 1000 | [link](https://github.com/hardmaru/rlzoo)
-|ACKTR | -1.183 ± 1.480 | 1000 | [link](https://github.com/hardmaru/rlzoo)
-|ACER | -1.789 ± 1.632 | 1000 | [link](https://github.com/hardmaru/rlzoo)
-|DQN | -4.091 ± 1.242 | 1000 | [link](https://github.com/hardmaru/rlzoo)
-|Random Policy | -4.866 ± 0.372 | 1000 | 
-|[Add Method](https://github.com/hardmaru/slimevolleygym/edit/master/README.md) |  | (>= 1000) | 
+| FrameStack PPO (Agent B) | −3.70 | −1.88 | −1.72 |
+| LSTM | −4.85 | −4.81 | — |
+| Exploiter PPO (Agent C) | −4.80 | −0.80 | −0.21 |
 
-## Publications
+---
 
-If you have publications, articles, projects, blog posts that use this environment, feel free to add a link here via a [PR](https://github.com/hardmaru/slimevolleygym/edit/master/README.md).
-
-## Citation
-
-<!--<p align="left">
-  <img width="100%" src="https://media.giphy.com/media/WsMaF3xeATeiCv7dBq/giphy.gif"></img></img>
-</p>-->
-
-Please use this BibTeX to cite this repository in your publications:
+## Project File Structure
 
 ```
-@misc{slimevolleygym,
-  author = {David Ha},
-  title = {Slime Volleyball Gym Environment},
-  year = {2020},
-  publisher = {GitHub},
-  journal = {GitHub repository},
-  howpublished = {\url{https://github.com/hardmaru/slimevolleygym}},
-}
+slimevolleygym/
+├── slimevolleygym/              # Core environment package (David Ha)
+│   ├── slimevolley.py           # Main physics / game logic
+│   ├── slimevolley_mask.py      # SlimeVolleyMasked-v0 (our fog-of-war env)
+│   ├── mlp.py                   # Built-in neural network (Agent A)
+│   └── rendering.py             # Pygame rendering helpers
+│
+├── train_framestack.py          # Train Agent B (FrameStack PPO, 10 M steps)
+├── train_exploiter.py           # Train Agent C (Exploiter PPO, 5 M steps)
+├── train_lstm.py                # Train LSTM agent (RecurrentPPO, 5 M steps)
+│
+├── eval_exploiter.py            # Three-way round-robin evaluation → CSV
+├── model_eval.py                # Single-model evaluation with detailed metrics
+├── analyze_training.py          # Plot and compare training curves
+│
+├── test_state.py                # Human vs baseline (interactive)
+├── test_framestack.py           # Visual test — Agent B
+├── test_exploiter.py            # Visual test — Agent C
+├── test_lstm.py                 # Visual test — LSTM agent
+│
+├── logs_framestack/             # Agent B training logs and checkpoints
+├── logs_exploiter/              # Agent C training logs and checkpoints
+├── logs_lstm/                   # LSTM agent training logs and checkpoints
+├── zoo/                         # Pre-trained models from original SlimeVolleyGym
+│
+├── results.csv                  # Agent B vs Agent A evaluation (200 episodes)
+├── results_roundrobin.csv       # Three-way round-robin results
+├── milestone_summary.csv        # Training rewards at 2M / 5M / 10M steps
+├── delta_analysis.csv           # Step-to-step improvement analysis
+│
+├── learning_curves.png          # Training curve plot
+├── bar_chart_milestones.png     # Milestone comparison bar chart
+├── delta_analysis.png           # Per-interval improvement chart
+│
+├── report.tex                   # Academic report (LaTeX)
+├── bibliography.bib             # BibTeX references
+└── training_scripts/            # Legacy SB2 scripts (not used in this project)
+```
+
+---
+
+## Compiling the LaTeX Report
+
+The references require a full BibTeX build sequence:
+
+```bash
+pdflatex report.tex
+bibtex report
+pdflatex report.tex
+pdflatex report.tex
+```
+
+Running only `pdflatex report.tex` once will leave all citations as `[?]`.
+
+---
+
+## TensorBoard
+
+```bash
+tensorboard --logdir logs_framestack    # Agent B training curves
+tensorboard --logdir logs_exploiter     # Agent C training curves
+tensorboard --logdir logs_lstm          # LSTM training curves
 ```

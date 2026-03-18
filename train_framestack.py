@@ -1,3 +1,17 @@
+"""
+Train Agent B — FrameStack PPO on SlimeVolleyMasked-v0
+=======================================================
+Agent B operates under a "fog of war": it cannot see the opponent at any
+time, and cannot see the ball when it is on the opponent's side of the net.
+To compensate, the last 4 masked observations are stacked into a single
+48-dimensional input, giving the agent implicit velocity and trajectory
+information.
+
+Additional reward shaping (BallOnSidePenalty) discourages passive play by
+penalising episodes where the ball sits on the agent's side for too long.
+
+Output: logs_framestack/run_<timestamp>/ppo_framestack_slimevolley.zip
+"""
 
 import gymnasium as gym
 import slimevolleygym

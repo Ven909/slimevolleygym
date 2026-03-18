@@ -264,9 +264,31 @@ All 200 episodes end at exactly the 3000-step time limit, resulting in draws. Th
 
 We trained Agent B at three durations: 2M, 5M, and 10M steps. While we did not run separate quantitative evaluations at each checkpoint for all 200 games, visual inspection during development showed that the 2M model played very passively, often failing to return the ball, while the 5M and 10M models developed consistent ball-returning behavior. The 10M model was selected for formal evaluation.
 
-\subsection{Agent C: Exploiter Design}
+\subsection{Round-Robin Evaluation: Agents A, B, and C}
 
-Agent C trains with full visibility against a frozen 10M-step Agent B. The hypothesis is that Agent C can learn to place the ball so that it crosses the net at moments and angles where Agent B, without ball visibility on the opponent's side, cannot anticipate its arrival. Training for 5M steps produced a model (151 KB) that was visually competitive during informal testing. A full three-way round-robin evaluation (Agent C vs.\ B, Agent A vs.\ B, Agent C vs.\ A) was implemented in \texttt{eval\_exploiter.py} but was not run to completion at the time of this report, so quantitative comparison of Agent C against the other agents is deferred to future work.
+Table~\ref{tab:roundrobin} shows the three-way round-robin results over 200 games per match-up. Each entry is the mean score $\pm$ standard deviation from the perspective of the right-side (first-listed) agent, so a positive value means the right-side agent wins more points on average.
+
+\begin{table}[h]
+\caption{Table 3: Round-robin evaluation results over 200 games per match-up. Each entry is the mean score $\pm$ standard deviation from the right-side agent's perspective. A positive mean indicates the right-side agent wins more points on average.}
+\label{tab:roundrobin}
+\begin{center}
+\begin{tabular}{|l|r|r|r|}
+\hline
+\textbf{Match-up} & \textbf{Mean} & \textbf{Std} & \textbf{Interpretation} \\
+\hline
+C (right) vs.\ B (left) & $-0.84$ & $1.34$ & B wins on points \\
+\hline
+A (right) vs.\ B (left) & $+0.07$ & $1.10$ & Roughly even \\
+\hline
+C (right) vs.\ A (left) & $-1.95$ & $1.58$ & A wins clearly \\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+Table~\ref{tab:roundrobin} shows that Agent C did not achieve the intended exploitation of Agent B's blind spots. Against Agent B, Agent C scores $-0.84$ per game on average, meaning B actually outperforms C despite its restricted observations. For comparison, Agent A (the 120-parameter baseline) scores $+0.07$ against Agent B --- essentially even. The difference between C and A when both play against B is $-0.91$, confirming that Agent C's training against B did not yield a useful exploit strategy.
+
+Agent C performs worst against Agent A, with a mean of $-1.95$, indicating that the training regime of playing exclusively against Agent B caused Agent C to overfit to B's specific style. When faced with A's full-visibility play, Agent C is outclassed convincingly.
 
 \subsection{LSTM Agent}
 
@@ -274,7 +296,7 @@ The LSTM agent (RecurrentPPO, 5M steps, 6.9 MB model) was trained on the same ma
 
 \subsection{Limitations}
 
-The main limitation of this evaluation is the draw-heavy scoring structure of Slime Volleyball. Even a clear performance gap between agents manifests only as a difference in score margin rather than in win rate, making it hard to demonstrate statistical significance with a modest number of episodes. A second limitation is that the exploiter's potential advantage over Agent B has not yet been quantified through the round-robin evaluation. Third, all training used default PPO hyperparameters; a systematic hyperparameter search could improve performance.
+The main limitation of this evaluation is the draw-heavy scoring structure of Slime Volleyball. Even a clear performance gap between agents manifests only as a difference in score margin rather than in win rate, making it hard to demonstrate statistical significance with a modest number of episodes. A second limitation is that Agent C was trained for only 5M steps against a single frozen opponent (Agent B), which may have caused overfitting and prevented development of general skills. Third, all training used default PPO hyperparameters; a systematic hyperparameter search could improve performance.
 
 
 \section{Conclusions}
@@ -283,7 +305,7 @@ The main limitation of this evaluation is the draw-heavy scoring structure of Sl
 
 This project trained three agents --- a baseline recurrent network (Agent A), a frame-stacked PPO agent under partial observability (Agent B), and a full-visibility exploiter PPO agent (Agent C) --- to play Slime Volleyball. We created a custom masked environment that hides opponent information and ball information when the ball is on the opponent's side, implemented reward shaping to encourage active play, and built an evaluation framework that records per-episode statistics.
 
-The 10M-step frame-stacked Agent B draws all 200 games against the baseline but concedes more points than it scores (score margin $-0.98$), indicating that the masking makes it harder to develop a dominant policy. The agent scores in some games (max reward $+2.0$) but concedes more often (min reward $-4.0$), suggesting it learned a partial strategy that can return the ball but does not proactively attack.
+The 10M-step frame-stacked Agent B draws all 200 games against the baseline but concedes more points than it scores (score margin $-0.98$), indicating that masking makes it harder to develop a dominant policy. The round-robin evaluation further shows that Agent C (the exploiter) failed to exploit Agent B's blind spots, scoring $-0.84$ against B compared to Agent A's $+0.07$ against B. Agent C also lost heavily to Agent A ($-1.95$), suggesting it overfitted to Agent B's style during training.
 
 \subsection{Comparison with Earlier Stages}
 
@@ -296,6 +318,7 @@ Early in the project (2M steps), Agent B was largely passive and failed to retur
     \item Frame stacking provides temporal context for an otherwise memoryless MLP policy and is sufficient for the agent to learn consistent ball-returning behavior.
     \item The draw-heavy game structure means win rate is not a sensitive evaluation metric; score margin is more informative.
     \item Ten million training steps produced a qualitatively better agent than two million steps, but a decisive quantitative improvement in score margin was not demonstrated.
+    \item Agent C (exploiter, full visibility, 5M steps vs.\ frozen Agent B) did not exploit Agent B's blind spots. It scored $-0.84$ against B while Agent A scored $+0.07$ against B, a gap of $-0.91$ in favor of A. Agent C also lost heavily to Agent A ($-1.95$), indicating overfitting to Agent B's play style.
 \end{itemize}
 
 \subsection{Gaps and Future Work}
@@ -303,11 +326,11 @@ Early in the project (2M steps), Agent B was largely passive and failed to retur
 Several directions remain open:
 
 \begin{itemize}
-    \item \textbf{Complete round-robin evaluation.} Running the three-way Agent A vs.\ B vs.\ C evaluation would directly test whether the exploiter hypothesis holds.
     \item \textbf{LSTM vs.\ frame stacking.} A head-to-head comparison of the two temporal-context methods under identical training budgets would clarify which better compensates for partial observability.
     \item \textbf{Longer training.} The benchmark~\cite{slimevolleygym} shows that PPO typically reaches its best performance around 3M steps against the baseline with full observations. Training Agent B longer in the masked setting may eventually produce a positive score margin.
     \item \textbf{Self-play.} Training Agent B against itself in the masked environment (both agents masked) could discover strategies adapted to mutual uncertainty.
     \item \textbf{Hyperparameter tuning.} Systematic tuning of learning rate, clip range, and network size could improve sample efficiency.
+    \item \textbf{Exploiter with curriculum.} Agent C overfitted to Agent B. Training C against a mixture of opponents (A, B, and self-play) could produce a more robust exploiter that retains general skill while still targeting B's blind spots.
 \end{itemize}
 
 

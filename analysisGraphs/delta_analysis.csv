@@ -1,0 +1,7 @@
+Agent,Transition,Reward at Start,Reward at End,% Change
+FrameStack,2M→5M,-3.7045,-1.8752,49.4
+FrameStack,5M→10M,-1.8752,-1.7224,8.1
+LSTM,2M→5M,-4.8543,-4.8105,0.9
+LSTM,5M→10M,-4.8105,,
+Exploit Agent,2M→5M,-4.8,-0.8,83.3
+Exploit Agent,5M→10M,-0.8,-0.21,73.8

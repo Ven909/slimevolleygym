@@ -1,3 +1,19 @@
+"""
+Train the LSTM agent — RecurrentPPO on SlimeVolleyMasked-v0
+============================================================
+This script trains a recurrent PPO agent (MlpLstmPolicy) on the masked
+Slime Volleyball environment.  The LSTM hidden state gives the agent an
+explicit temporal memory across timesteps, as an alternative to the
+frame-stacking approach used by Agent B.
+
+Key differences from train_framestack.py:
+  - Uses RecurrentPPO from SB3-Contrib instead of standard PPO.
+  - The network is MLP → LSTM → policy/value heads.
+  - The model file is larger (~7 MB) because the LSTM state is stored.
+  - Training is slower per timestep than the MLP-only Agent B.
+
+Output: logs_lstm/run_<timestamp>/ppo_lstm_slimevolley.zip
+"""
 
 import gymnasium as gym
 import slimevolleygym

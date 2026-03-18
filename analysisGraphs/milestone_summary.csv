@@ -1,0 +1,10 @@
+Agent,Training Steps,Steps (exact),Mean Reward
+FrameStack,2M,1998848.0,-3.7045
+FrameStack,5M,4997120.0,-1.8752
+FrameStack,10M,10002432.0,-1.7224
+LSTM,2M,1999872.0,-4.8543
+LSTM,5M,5000192.0,-4.8105
+LSTM,10M,,
+Exploit Agent,2M,1998848.0,-4.8
+Exploit Agent,5M,4997120.0,-0.8
+Exploit Agent,10M,9997120.0,-0.21
